@@ -21,18 +21,22 @@ router.get('/', authenticateToken, async (req, res) => {
 // Calculate current log manually
 router.post('/calculate', authenticateToken, async (req, res) => {
   try {
-    const appliances = await prisma.appliance.findMany({
-      where: { userId: req.user.userId, status: { not: 'off' } }
-    });
+    let totalWatts = req.body?.currentTotalWatts;
+    
+    if (totalWatts === undefined) {
+      const appliances = await prisma.appliance.findMany({
+        where: { userId: req.user.userId, status: { not: 'off' } }
+      });
+      totalWatts = appliances.reduce((sum, app) => sum + app.watts, 0);
+    }
 
-    const totalWatts = appliances.reduce((sum, app) => sum + app.watts, 0);
-    // Simple calc A = W / 120V
+    // Simple calc A = W / 120V (Standard Ecuador voltage)
     const amps = totalWatts / 120;
 
     const log = await prisma.currentLog.create({
       data: {
         userId: req.user.userId,
-        amps: amps + (Math.random() * 1.5) // adding slight noise for realism
+        amps: amps > 0 ? amps + (Math.random() * 0.4 - 0.2) : 0 // small realistic noise
       }
     });
 

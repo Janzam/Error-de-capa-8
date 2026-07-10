@@ -27,17 +27,38 @@ El usuario tiene registrados los siguientes electrodomésticos:\n${contextStr ||
     if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "tu_clave_api_de_anthropic_aqui") {
       // Simulación de IA para el concurso
       const lastMessage = messages[messages.length - 1].content.toLowerCase();
-      let responseText = "Entendido. Recuerda apagar los equipos que no utilices para ahorrar energía.";
+      let responseText = "Lo siento, como modelo de demostración estoy limitado a ciertas respuestas. Por favor, selecciona una de las preguntas sugeridas arriba.";
       
-      if (lastMessage.includes("aire")) {
-        responseText = "He notado que tu Aire Acondicionado Sala está registrando un consumo 30% superior a lo normal. Podría deberse a falta de gas o filtros sucios. Te recomiendo realizar un mantenimiento preventivo.";
-      } else if (lastMessage.includes("ahorr")) {
-        responseText = "Para ahorrar energía con tus equipos actuales, te sugiero ajustar el termostato del refrigerador a nivel medio y apagar la regleta de la TV y Laptop cuando no los uses de noche.";
-      } else if (lastMessage.includes("corte")) {
-         responseText = "Ante un corte de energía programado, desconecta tus equipos electrónicos (TV, Laptop, Aire) para protegerlos de picos de voltaje cuando retorne el servicio.";
+      if (lastMessage.match(/hola|buen|saludo|hey/)) {
+        responseText = `¡Hola! Soy tu asistente WattIA. Veo que tienes ${appliances.length} equipos registrados. ¿En qué te puedo ayudar hoy? Selecciona una pregunta sugerida.`;
+      } else if (lastMessage.match(/gracias|agradecid|excelente|ok/)) {
+        responseText = "¡De nada! Estoy aquí para ayudarte a optimizar tu consumo eléctrico. ¡Cualquier otra duda, usa las preguntas sugeridas!";
+      } else if (lastMessage.includes("aire")) {
+        const aire = appliances.find(a => a.type === "aire");
+        if (aire && aire.status === "danger") {
+           responseText = `He notado que tu ${aire.name} está consumiendo más de lo normal (${aire.watts} W). Podría faltar gas o tener filtros sucios.`;
+        } else {
+           responseText = "Para bajar el consumo del aire acondicionado, ajusta el termostato a 24°C, limpia los filtros periódicamente y asegúrate de cerrar puertas y ventanas para no perder el aire frío.";
+        }
+      } else if (lastMessage.includes("corte") || lastMessage.includes("luz")) {
+        responseText = "Ante un corte de energía programado, desconecta tus equipos electrónicos (TV, Laptop, Aire) para protegerlos de picos de voltaje cuando retorne el servicio.";
+      } else if (lastMessage.includes("refrigerador") || lastMessage.includes("refri") || lastMessage.includes("nevera") || lastMessage.includes("falla")) {
+        const refri = appliances.find(a => a.type === "refrigerador");
+        if (refri && refri.status === "danger") {
+           responseText = `¡Atención! Tu ${refri.name} consume mucho más de su promedio histórico. Esto es típico de un empaque de puerta desgastado o falta de gas. Sugiero revisión técnica.`;
+        } else {
+           responseText = "Si notas que el motor no se detiene, la temperatura interna sube, o ves un consumo superior al histórico, es posible que el sello de la puerta esté desgastado o le falte gas.";
+        }
+      } else if (lastMessage.includes("lavadora")) {
+        responseText = "La lavadora consume bastante energía. Te sugiero usarla en carga completa y con agua fría para reducir su impacto en tu planilla.";
+      } else if (lastMessage.includes("stand-by") || lastMessage.includes("vampiro")) {
+        responseText = "Los equipos en stand-by (como la TV apagada pero enchufada) consumen la llamada 'energía vampiro'. Desconectarlos de la regleta puede ahorrarte hasta un 10% mensual.";
+      } else if (lastMessage.includes("ahorr") || lastMessage.includes("bajar")) {
+        const total = appliances.reduce((sum, a) => sum + (a.status !== 'off' ? a.watts : 0), 0);
+        responseText = `Tu consumo en tiempo real es de aproximadamente ${total}W. Para ahorrar, te sugiero ajustar el termostato del refrigerador y apagar regletas de equipos en stand-by.`;
       }
 
-      return res.json({ content: [{ text: responseText }] });
+      return res.json({ content: [{ type: "text", text: responseText }] });
     }
 
     const response = await anthropic.messages.create({

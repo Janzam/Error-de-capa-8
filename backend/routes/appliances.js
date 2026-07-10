@@ -23,13 +23,20 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const { name, type, watts, hoursUse } = req.body;
     
+    // Simulate real-world issues for hackathon demo
+    let status = "ok";
+    if (type === "refrigerador" && watts > 200) status = "danger";
+    else if (type === "aire" && watts > 1500) status = "warning";
+    else if (watts > 2000) status = "danger";
+
     const appliance = await prisma.appliance.create({
       data: {
         userId: req.user.userId,
         name,
         type,
         watts: Number(watts),
-        hoursUse: Number(hoursUse)
+        hoursUse: Number(hoursUse),
+        status
       }
     });
 

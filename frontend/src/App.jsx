@@ -13,7 +13,16 @@ import {
 
 const API_URL = "http://localhost:3001/api";
 
-const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');`;
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@keyframes eq {
+  0% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+  100% { transform: scaleY(0.3); }
+}
+.eq-bar {
+  animation: eq 1s ease-in-out infinite;
+  transform-origin: bottom;
+}`;
 const disp = { fontFamily: "'Space Grotesk', sans-serif" };
 const mono = { fontFamily: "'JetBrains Mono', monospace" };
 const body = { fontFamily: "'Inter', sans-serif" };
@@ -54,6 +63,15 @@ function StatusPill({ status }) {
   );
 }
 
+const QUESTION_POOL = [
+  "¿Cómo bajo el consumo del aire acondicionado?",
+  "¿Qué hago ante un corte de luz?",
+  "¿Cómo sé si mi refrigerador está fallando?",
+  "¿Cómo puedo ahorrar energía en casa?",
+  "¿Qué equipos consumen energía en stand-by?",
+  "¿Algún consejo para el uso de la lavadora?"
+];
+
 export default function WattIA() {
   const [token, setToken] = useState(localStorage.getItem('wattia_token'));
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('wattia_user')) || null);
@@ -63,13 +81,13 @@ export default function WattIA() {
   const [log, setLog] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newAppl, setNewAppl] = useState({ name: "", type: "otro", watts: "", hoursUse: "" });
-  const [planillaState, setPlanillaState] = useState("idle");
   const [chatMessages, setChatMessages] = useState([
     { role: "assistant", content: "¡Hola! Soy el asistente de WattIA. Pregúntame sobre ahorro de energía o cuidado de tus equipos." },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [suggestedQ, setSuggestedQ] = useState(QUESTION_POOL.slice(0, 3));
   const chatEndRef = useRef(null);
 
   // Login form state
@@ -156,7 +174,12 @@ export default function WattIA() {
     if (!token) return;
     const interval = setInterval(async () => {
       try {
-         const res = await fetch(`${API_URL}/logs/calculate`, { method: "POST", ...reqOpts() });
+         const currentTotalWatts = appliances.reduce((s, a) => s + (a.status !== "off" ? a.watts : 0), 0);
+         const res = await fetch(`${API_URL}/logs/calculate`, { 
+            method: "POST", 
+            ...reqOpts(),
+            body: JSON.stringify({ currentTotalWatts })
+         });
          if (res.ok) {
             const newLog = await res.json();
             setLog(prev => [newLog, ...prev].slice(0, 10));
@@ -164,7 +187,7 @@ export default function WattIA() {
       } catch (e) {}
     }, 5000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, appliances]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -208,6 +231,17 @@ export default function WattIA() {
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const handleSuggestedClick = (q) => {
+    sendChat(q);
+    setSuggestedQ(prev => {
+       const others = QUESTION_POOL.filter(x => !prev.includes(x) && x !== q);
+       const nextQ = others.length > 0 ? others[Math.floor(Math.random() * others.length)] : null;
+       const filtered = prev.filter(x => x !== q);
+       if (nextQ) filtered.push(nextQ);
+       return filtered;
+    });
   };
 
   if (!token) {
@@ -259,7 +293,16 @@ export default function WattIA() {
   ];
 
   const totalWatts = appliances.reduce((s, a) => s + (a.status !== "off" ? a.watts : 0), 0);
-  const estCost = ((totalWatts / 1000) * 0.10 * 24 * 30).toFixed(2);
+  // Cálculo mensual en Ecuador: kWh = (Watts / 1000) * HorasDiarias * 30 días. Tarifa prom = $0.10 / kWh
+  const estCost = appliances.reduce((sum, a) => {
+     if (a.status === "off") return sum;
+     const dailyHours = a.hoursUse || 6; // Por defecto 6h si no se especificó
+     const monthlyKwh = (a.watts / 1000) * dailyHours * 30;
+     return sum + (monthlyKwh * 0.102); // Tarifa residencial promedio $0.102/kWh CNEL
+  }, 0).toFixed(2);
+  const dangerCount = appliances.filter(a => a.status === 'danger').length;
+  const weatherAlertsCount = user?.email === "ale.zambrano@wattia.com" ? 2 : 0;
+  const totalAlertsCount = dangerCount + weatherAlertsCount;
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex text-slate-200 relative" style={body}>
@@ -288,16 +331,47 @@ export default function WattIA() {
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "resumen" && (
           <div className="space-y-5">
-            <div><h1 className="text-white text-xl font-bold" style={disp}>Resumen {user?.name ? `de ${user.name}` : ''}</h1></div>
+            <div><h1 className="text-white text-xl font-bold" style={disp}>Resumen en tiempo real</h1><p className="text-slate-500 text-sm">Datos simulados actualizándose cada pocos segundos</p></div>
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
                 <div className="flex items-center gap-2 text-slate-400 text-xs mb-2"><Gauge className="w-3.5 h-3.5" /> CONSUMO ACTUAL</div>
                 <div className="text-2xl font-bold text-amber-400" style={mono}>{totalWatts} W</div>
               </div>
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                <div className="flex items-center gap-2 text-slate-400 text-xs mb-2"><TrendingUp className="w-3.5 h-3.5" /> COSTO EST. MES</div>
+                <div className="flex items-center gap-2 text-slate-400 text-xs mb-2"><TrendingUp className="w-3.5 h-3.5" /> COSTO ESTIMADO / MES</div>
                 <div className="text-2xl font-bold text-emerald-400" style={mono}>${estCost}</div>
               </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-slate-400 text-xs mb-2"><ShieldAlert className="w-3.5 h-3.5" /> ALERTAS ACTIVAS</div>
+                <div className="text-2xl font-bold text-rose-400" style={mono}>{totalAlertsCount}</div>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+               <h2 className="text-white font-bold" style={disp}>Consumo por electrodoméstico</h2>
+               <div className="grid grid-cols-2 gap-4">
+                  {appliances.map(a => {
+                     const meta = typeMeta(a.type);
+                     const Icon = meta.icon;
+                     const cColor = a.status === 'danger' ? 'text-rose-500' : (a.status === 'off' ? 'text-slate-500' : 'text-amber-400');
+                     const sColor = a.status === 'danger' ? '#f43f5e' : (a.status === 'off' ? '#64748b' : (a.type === 'aire' || a.type === 'television' ? '#fbbf24' : '#10b981'));
+                     return (
+                        <div key={a.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                           <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-3">
+                                 <div className={`p-2 rounded-xl bg-slate-800 ${cColor}`}><Icon className="w-6 h-6"/></div>
+                                 <div><div className="text-sm text-slate-100 font-medium">{a.name}</div><div className="text-xs text-slate-500">{meta.label}</div></div>
+                              </div>
+                              <StatusPill status={a.status} />
+                           </div>
+                           <div className="flex justify-between items-end mb-1">
+                              <div className={`text-xl font-bold ${cColor}`} style={mono}>{a.watts} W</div>
+                           </div>
+                           <Sparkline data={a.history || []} color={sColor} />
+                        </div>
+                     );
+                  })}
+               </div>
             </div>
           </div>
         )}
@@ -305,21 +379,29 @@ export default function WattIA() {
         {tab === "electrodomesticos" && (
           <div className="space-y-5">
             <div className="flex justify-between items-center">
-               <h1 className="text-white text-xl font-bold" style={disp}>Mis equipos</h1>
+               <div><h1 className="text-white text-xl font-bold" style={disp}>Mis electrodomésticos</h1><p className="text-slate-500 text-sm">Visualiza el consumo en tiempo real por equipo</p></div>
                <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 bg-amber-500 text-slate-950 font-semibold px-3 py-2 rounded-lg text-sm"><Plus className="w-4 h-4" /> Agregar</button>
             </div>
             <div className="grid grid-cols-2 gap-4">
                {appliances.map(a => {
                   const meta = typeMeta(a.type);
                   const Icon = meta.icon;
+                  const cColor = a.status === 'danger' ? 'text-rose-500' : (a.status === 'off' ? 'text-slate-500' : 'text-amber-400');
+                  const sColor = a.status === 'danger' ? '#f43f5e' : (a.status === 'off' ? '#64748b' : (a.type === 'aire' || a.type === 'television' ? '#fbbf24' : '#10b981'));
                   return (
                      <div key={a.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-                        <div className="flex items-center gap-3 mb-2">
-                           <div className="p-2 rounded-xl bg-slate-800 text-amber-400"><Icon className="w-6 h-6"/></div>
-                           <div><div className="text-sm text-slate-100">{a.name}</div><div className="text-xs text-slate-500">{meta.label}</div></div>
+                        <div className="flex justify-between items-start mb-2">
+                           <div className="flex items-center gap-3">
+                              <div className={`p-2 rounded-xl bg-slate-800 ${cColor}`}><Icon className="w-6 h-6"/></div>
+                              <div><div className="text-sm text-slate-100 font-medium">{a.name}</div><div className="text-xs text-slate-500">{meta.label}</div></div>
+                           </div>
+                           <StatusPill status={a.status} />
                         </div>
-                        <div className="text-xl font-bold text-amber-400" style={mono}>{a.watts} W</div>
-                        <Sparkline data={a.history || []} color="#fbbf24" />
+                        <div className="flex justify-between items-end mb-1">
+                           <div className={`text-xl font-bold ${cColor}`} style={mono}>{a.watts} W</div>
+                           <div className="text-[10px] text-slate-500" style={mono}>base {a.baseWatts || a.watts} W</div>
+                        </div>
+                        <Sparkline data={a.history || []} color={sColor} />
                      </div>
                   );
                })}
@@ -327,16 +409,190 @@ export default function WattIA() {
           </div>
         )}
 
+        {tab === "planilla" && (
+           <div className="space-y-5">
+              <div><h1 className="text-white text-xl font-bold" style={disp}>Planilla y pagos</h1><p className="text-slate-500 text-sm">Sube tu planilla, revisa tu historial y no te pierdas un vencimiento</p></div>
+              <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-4 flex gap-3">
+                 <BellRing className="w-5 h-5 text-rose-400 shrink-0 mt-0.5"/>
+                 <div>
+                    <div className="text-rose-400 font-medium text-sm mb-1">Recordatorio: planilla de Junio 2026 vence en 3 días</div>
+                    <div className="text-rose-400/80 text-xs">Monto: $26.90 - Vencimiento: 15 jul. Te avisaremos de nuevo antes de la fecha límite para evitar recargos o corte por falta de pago.</div>
+                 </div>
+              </div>
+              <div>
+                 <div className="flex justify-between items-end mb-3">
+                    <h2 className="text-white font-semibold flex items-center gap-2 text-sm"><CalendarClock className="w-4 h-4 text-amber-500"/> Historial de planillas</h2>
+                    <span className="text-xs text-slate-500">2 pendiente(s)</span>
+                 </div>
+                 <div className="space-y-2">
+                    {paymentHistory.map((p, i) => (
+                       <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex justify-between items-center">
+                          <div className="flex items-center gap-3">
+                             <div className={`p-1.5 rounded-full ${p.status==='pagada'?'bg-emerald-500/10 text-emerald-400':'bg-rose-500/10 text-rose-400'}`}>
+                                {p.status==='pagada' ? <CheckCircle2 className="w-4 h-4"/> : <Clock3 className="w-4 h-4"/>}
+                             </div>
+                             <div>
+                                <div className="text-sm font-medium text-slate-200">{p.month}</div>
+                                <div className="text-xs text-slate-500">Vence {new Date(p.dueDate).toLocaleDateString('es-ES', {day:'numeric', month:'short'})}</div>
+                             </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                             <span className="text-sm font-bold text-slate-200" style={mono}>${p.amount.toFixed(2)}</span>
+                             <span className={`text-[10px] px-2 py-0.5 rounded-full border ${p.status==='pagada'?'border-emerald-500/30 text-emerald-400':'border-rose-500/30 text-rose-400'}`}>{p.status==='pagada'?'Pagada':'Pendiente'}</span>
+                          </div>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+              
+              <h2 className="text-white font-semibold text-sm pt-2">Subir nueva planilla</h2>
+              <div className="grid grid-cols-2 gap-4">
+                 <button onClick={() => {
+                     const fakeBill = { month: "Mes Actual (Simulado)", amount: parseFloat((Math.random() * 30 + 10).toFixed(2)), dueDate: new Date(Date.now() + 15 * 86400000).toISOString(), status: 'pendiente' };
+                     setPaymentHistory([fakeBill, ...paymentHistory]);
+                 }} className="border border-slate-800 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-800/30 cursor-pointer transition-colors">
+                    <Upload className="w-6 h-6 mb-2"/>
+                    <span className="text-xs">Subir planilla electrónica (PDF/XML)</span>
+                 </button>
+                 <button onClick={() => {
+                     const fakeBill = { month: "Foto escaneada (Simulada)", amount: parseFloat((Math.random() * 30 + 10).toFixed(2)), dueDate: new Date(Date.now() + 15 * 86400000).toISOString(), status: 'pendiente' };
+                     setPaymentHistory([fakeBill, ...paymentHistory]);
+                 }} className="border border-slate-800 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-800/30 cursor-pointer transition-colors">
+                    <Camera className="w-6 h-6 mb-2"/>
+                    <span className="text-xs">Tomar foto de planilla física</span>
+                 </button>
+              </div>
+           </div>
+        )}
+
         {tab === "log" && (
            <div className="space-y-5">
-              <h1 className="text-white text-xl font-bold" style={disp}>Log de corriente</h1>
+              <div><h1 className="text-white text-xl font-bold" style={disp}>Log de corriente</h1><p className="text-slate-500 text-sm">Lecturas de amperaje en vivo (simulado)</p></div>
               <div className="space-y-2">
                  {log.map(entry => (
-                    <div key={entry.id} className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 flex justify-between">
-                       <span className="text-xs text-slate-500" style={mono}>{new Date(entry.recordedAt).toLocaleTimeString()}</span>
+                    <div key={entry.id} className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 flex items-center justify-between">
+                       <div className="flex items-center gap-3">
+                          <Activity className="w-4 h-4 text-amber-500"/>
+                          <span className="text-xs text-slate-500" style={mono}>{new Date(entry.recordedAt).toLocaleTimeString()}</span>
+                       </div>
+                       <div className="flex gap-[2px] items-end h-4">
+                          {[1,2,3,4,5,6,7,8,9,10].map(i => <div key={i} className="w-1 bg-amber-500/80 rounded-t-sm eq-bar" style={{height: '100%', animationDelay: `${i * 0.15}s`, animationDuration: `${0.8 + (i%3)*0.2}s`}}/>)}
+                       </div>
                        <span className="text-sm font-bold text-amber-400" style={mono}>{entry.amps.toFixed(2)} A</span>
                     </div>
                  ))}
+              </div>
+           </div>
+        )}
+
+        {tab === "alertas" && (
+           <div className="space-y-5">
+              <div><h1 className="text-white text-xl font-bold" style={disp}>Alertas y clima</h1><p className="text-slate-500 text-sm">Riesgo de cortes y señales de posible daño en tus equipos</p></div>
+              
+              <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-4 flex gap-3">
+                 <CloudLightning className="w-5 h-5 text-rose-400 shrink-0 mt-0.5"/>
+                 <div>
+                     <div className="text-rose-400 font-medium text-sm mb-1">Tormenta eléctrica en Ecuador</div>
+                     <div className="text-slate-400 text-xs">CNEL EP reporta riesgo de cortes intermitentes por lluvias fuertes. Considera desconectar equipos sensibles.</div>
+                 </div>
+              </div>
+              
+              <h2 className="text-white font-semibold text-sm pt-2">Señales de posible daño</h2>
+              {appliances.filter(a => a.status === 'danger' || a.status === 'warning').length > 0 ? (
+                 appliances.filter(a => a.status === 'danger' || a.status === 'warning').map(a => {
+                    const Icon = typeMeta(a.type).icon;
+                    return (
+                       <div key={a.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                          <div className={`p-2 rounded-xl ${a.status==='danger'?'bg-rose-500/10 text-rose-400':'bg-amber-500/10 text-amber-500'} shrink-0 h-10`}><Icon className="w-6 h-6"/></div>
+                          <div>
+                             <div className="text-slate-100 font-medium text-sm mb-1">{a.name}</div>
+                             <div className="text-slate-400 text-xs mb-2">
+                                {a.status === 'danger' 
+                                   ? "Consumo superior a su promedio histórico durante los últimos ciclos. Patrón asociado a desgaste."
+                                   : "Se detectaron fluctuaciones inusuales. Mantente atento."}
+                             </div>
+                             <div className={`${a.status==='danger'?'text-rose-400':'text-amber-500'} text-xs flex items-center gap-1.5`}><AlertTriangle className="w-3.5 h-3.5"/> Recomendamos revisión técnica preventiva</div>
+                          </div>
+                       </div>
+                    );
+                 })
+              ) : (
+                 <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 text-center text-slate-500 text-sm italic">
+                    No tienes alertas de equipos en este momento.
+                 </div>
+              )}
+           </div>
+        )}
+
+        {tab === "recomendaciones" && (
+           <div className="space-y-5">
+              <div><h1 className="text-white text-xl font-bold" style={disp}>Recomendaciones IA</h1><p className="text-slate-500 text-sm">Sugerencias personalizadas según tu consumo y el clima</p></div>
+              
+              <div className="space-y-3">
+                 {appliances.some(a => a.type === 'lavadora') && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                       <div className="p-2 rounded-xl bg-slate-800 text-amber-500 shrink-0 h-10"><TrendingDown className="w-6 h-6"/></div>
+                       <div>
+                          <div className="text-slate-100 font-medium text-sm mb-1">Adelanta el uso de la lavadora</div>
+                          <div className="text-slate-500 text-xs">El pico tarifario de CNEL inicia a las 18h00. Lavar antes de esa hora bajará tu planilla.</div>
+                       </div>
+                    </div>
+                 )}
+                 {appliances.some(a => a.type === 'refrigerador') && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                       <div className="p-2 rounded-xl bg-slate-800 text-amber-500 shrink-0 h-10"><AlertTriangle className="w-6 h-6"/></div>
+                       <div>
+                          <div className="text-slate-100 font-medium text-sm mb-1">Revisa el sello del refrigerador</div>
+                          <div className="text-slate-500 text-xs">Mantén el termostato a nivel medio y revisa que las gomas de la puerta sellen bien.</div>
+                       </div>
+                    </div>
+                 )}
+                 {appliances.some(a => a.type === 'iluminacion') && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                       <div className="p-2 rounded-xl bg-slate-800 text-amber-500 shrink-0 h-10"><Lightbulb className="w-6 h-6"/></div>
+                       <div>
+                          <div className="text-slate-100 font-medium text-sm mb-1">Aprovecha la luz solar ecuatorial</div>
+                          <div className="text-slate-500 text-xs">La iluminación de tus espacios se enciende muy temprano. Intenta abrir las ventanas hasta las 18h30.</div>
+                       </div>
+                    </div>
+                 )}
+                 {appliances.some(a => a.type === 'aire') && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                       <div className="p-2 rounded-xl bg-slate-800 text-amber-500 shrink-0 h-10"><AirVent className="w-6 h-6"/></div>
+                       <div>
+                          <div className="text-slate-100 font-medium text-sm mb-1">Optimiza tu Aire Acondicionado</div>
+                          <div className="text-slate-500 text-xs">Ajustarlo a 24°C en climas cálidos de la costa ecuatoriana es el balance perfecto entre confort y ahorro.</div>
+                       </div>
+                    </div>
+                 )}
+                 
+                 {/* Tips Generales Siempre Visibles */}
+                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                    <div className="p-2 rounded-xl bg-slate-800 text-amber-500 shrink-0 h-10"><ShieldAlert className="w-6 h-6"/></div>
+                    <div>
+                       <div className="text-slate-100 font-medium text-sm mb-1">Protege tus equipos de los apagones</div>
+                       <div className="text-slate-500 text-xs">Mantente atento a los cronogramas de racionamiento de CNEL EP. Usa un regulador de voltaje para tu TV o computadora y desconéctalos al primer corte preventivo.</div>
+                    </div>
+                 </div>
+
+                 <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex gap-3">
+                    <div className="p-2 rounded-xl bg-slate-800 text-emerald-500 shrink-0 h-10"><Zap className="w-6 h-6"/></div>
+                    <div>
+                       <div className="text-slate-100 font-medium text-sm mb-1">Elimina el consumo "Vampiro"</div>
+                       <div className="text-slate-500 text-xs">Cargadores conectados sin teléfono y electrodomésticos en stand-by aumentan tu planilla. Usa regletas con interruptor para apagarlos por completo de noche.</div>
+                    </div>
+                 </div>
+
+                 {appliances.length === 0 && (
+                    <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 text-center text-slate-500 text-sm italic">
+                       Agrega electrodomésticos para recibir más recomendaciones personalizadas de la IA.
+                    </div>
+                 )}
+              </div>
+              
+              <div className="flex items-center gap-2 pt-4 text-xs text-slate-500">
+                 <Bot className="w-4 h-4 text-amber-500" />
+                 <span>¿Tienes otra duda? Abre el asistente en el círculo inferior derecho.</span>
               </div>
            </div>
         )}
@@ -378,12 +634,12 @@ export default function WattIA() {
                 <div ref={chatEndRef} />
              </div>
 
-             <div className="px-3 pb-2 flex flex-wrap gap-1.5">
-              {["¿Cómo bajo el consumo del aire acondicionado?", "¿Qué hago ante un corte de luz?", "¿Cómo sé si mi refrigerador está fallando?"].map((q) => (
+             <div className="px-3 pb-2 flex flex-col gap-2">
+              {suggestedQ.map((q, idx) => (
                 <button
                   key={q}
-                  onClick={() => sendChat(q)}
-                  className="text-[10px] px-2.5 py-1 rounded-full border border-slate-700 text-slate-400 hover:border-amber-500/50 hover:text-amber-400 text-left"
+                  onClick={() => handleSuggestedClick(q)}
+                  className={`w-full text-[11px] px-3 py-1.5 rounded-full border text-left transition-colors ${idx === 0 ? "border-amber-500 text-amber-500 hover:bg-amber-500/10" : "border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-500 hover:bg-amber-500/10"}`}
                 >
                   {q}
                 </button>
