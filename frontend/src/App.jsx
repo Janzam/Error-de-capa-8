@@ -128,6 +128,29 @@ export default function WattIA() {
     loadData();
   }, [token]);
 
+  // Efecto de tiempo real para los electrodomésticos (visual drift)
+  const tick = useRef(0);
+  useEffect(() => {
+    if (!token || appliances.length === 0) return;
+    const interval = setInterval(() => {
+      tick.current += 1;
+      setAppliances(prev => prev.map(a => {
+        if (a.status === "off") return a;
+        const baseWatts = a.baseWatts || a.watts; // Guarda el valor base si no existe
+        const drift = a.status === "danger" ? 1.28 : 1;
+        const nextW = Math.max(0, Math.round(baseWatts * drift * (0.88 + Math.random() * 0.28)));
+        
+        // Actualizar el historial visual
+        const hist = a.history ? [...a.history] : [];
+        if (hist.length > 12) hist.shift();
+        hist.push({ watts: nextW, recordedAt: new Date().toISOString() });
+        
+        return { ...a, baseWatts, watts: nextW, history: hist };
+      }));
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [token, appliances.length]);
+
   // Periodic log calculator
   useEffect(() => {
     if (!token) return;
@@ -351,11 +374,25 @@ export default function WattIA() {
                       <div className={`max-w-[80%] rounded-xl px-3 py-2 text-xs ${m.role==="user"?"bg-amber-500 text-slate-950":"bg-slate-800 text-slate-200"}`}>{m.content}</div>
                    </div>
                 ))}
+                {chatLoading && <div className="text-xs text-slate-500 italic">Escribiendo...</div>}
                 <div ref={chatEndRef} />
              </div>
+
+             <div className="px-3 pb-2 flex flex-wrap gap-1.5">
+              {["¿Cómo bajo el consumo del aire acondicionado?", "¿Qué hago ante un corte de luz?", "¿Cómo sé si mi refrigerador está fallando?"].map((q) => (
+                <button
+                  key={q}
+                  onClick={() => sendChat(q)}
+                  className="text-[10px] px-2.5 py-1 rounded-full border border-slate-700 text-slate-400 hover:border-amber-500/50 hover:text-amber-400 text-left"
+                >
+                  {q}
+                </button>
+              ))}
+             </div>
+
              <div className="p-3 border-t border-slate-800 flex gap-2">
-                <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendChat()} className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200" placeholder="Pregunta..." />
-                <button onClick={()=>sendChat()} className="p-2 bg-amber-500 rounded-lg text-slate-950"><Send className="w-4 h-4"/></button>
+                <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendChat()} className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200" placeholder="Pregunta..." disabled={chatLoading} />
+                <button onClick={()=>sendChat()} disabled={chatLoading} className="p-2 bg-amber-500 rounded-lg text-slate-950 disabled:opacity-50"><Send className="w-4 h-4"/></button>
              </div>
           </div>
         )}
