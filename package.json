@@ -1,0 +1,11 @@
+{
+  "name": "wattia",
+  "version": "1.0.0",
+  "description": "WattIA Full-Stack",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

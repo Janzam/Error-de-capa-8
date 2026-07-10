@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String       @id @default(uuid())
+  email        String       @unique
+  passwordHash String
+  name         String?
+  appliances   Appliance[]
+  bills        Bill[]
+  logs         CurrentLog[]
+  createdAt    DateTime     @default(now())
+}
+
+model Appliance {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  type      String
+  watts     Float
+  hoursUse  Float
+  status    String   @default("ok")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  history   ApplianceHistory[]
+}
+
+model ApplianceHistory {
+  id          String    @id @default(uuid())
+  applianceId String
+  appliance   Appliance @relation(fields: [applianceId], references: [id])
+  watts       Float
+  recordedAt  DateTime  @default(now())
+}
+
+model Bill {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  month      String
+  amount     Float
+  dueDate    DateTime
+  kwh        Float?
+  status     String   @default("pendiente")
+  createdAt  DateTime @default(now())
+}
+
+model CurrentLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  amps       Float
+  recordedAt DateTime @default(now())
+}
