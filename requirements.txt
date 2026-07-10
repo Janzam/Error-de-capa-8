@@ -1,0 +1,25 @@
+# Dependencias del proyecto (Node.js)
+# Ejecuta "npm install" en las carpetas respectivas.
+
+# Raíz
+concurrently==9.1.2
+
+# Backend
+express==4.21.2
+cors==2.8.5
+dotenv==16.4.7
+jsonwebtoken==9.0.2
+bcryptjs==3.0.0
+@anthropic-ai/sdk==0.36.0
+@prisma/client==5.10.0
+prisma==5.10.0
+nodemon==3.1.9
+
+# Frontend
+react==19.2.7
+react-dom==19.2.7
+lucide-react==1.24.0
+recharts==3.9.2
+vite==8.1.1
+tailwindcss==4.3.2
+@tailwindcss/vite==4.0.0

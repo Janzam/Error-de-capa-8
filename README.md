@@ -6,9 +6,11 @@ WattIA es una aplicación web full-stack de monitoreo de consumo eléctrico resi
 - Node.js (v18+)
 - npm
 
-## Instalación
+## Instalación de Dependencias
 
-1. Instala las dependencias en la raíz (esto instalará `concurrently`):
+Puedes revisar el archivo `requirements.txt` adjunto en la raíz para conocer las librerías exactas utilizadas en cada módulo del proyecto. Para descargar e instalar las dependencias automáticamente, sigue estos pasos:
+
+1. Instala las dependencias en la raíz (esto instalará `concurrently` para correr el entorno):
    ```bash
    npm install
    ```
@@ -32,11 +34,19 @@ JWT_SECRET="super-secret-key-for-wattia-hackathon-2026"
 ANTHROPIC_API_KEY="tu_clave_api_de_anthropic_aqui"
 ```
 
-## Base de Datos
+## Base de Datos y Archivo Semilla
 
-El proyecto usa SQLite para facilitar la prueba local. Para inicializar/poblar la base de datos, ejecuta desde la carpeta `backend`:
+El proyecto usa SQLite para facilitar la prueba local. 
+Se ha incluido un **archivo semilla (`backend/prisma/seed.js`)** que ya contiene información precargada para probar la plataforma inmediatamente (electrodomésticos con historiales y planillas). 
+
+El usuario precargado (semilla) es:
+- **Correo:** `ale.zambrano@wattia.com`
+- **Contraseña:** `123456`
+
+Para inicializar la base de datos y poblarla con el archivo semilla, ejecuta desde la carpeta `backend`:
 ```bash
-npx prisma migrate dev --name init
+npx prisma migrate dev --name init_v5
+node prisma/seed.js
 ```
 
 ## Ejecución
