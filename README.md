@@ -1,6 +1,6 @@
 # Psister - Hackathon Proyecto
 
-WattIA es una aplicación web full-stack de monitoreo de consumo eléctrico residencial.
+Psister es una aplicación web full-stack de monitoreo de consumo eléctrico residencial.
 
 ## Requisitos
 - Node.js (v18+)
