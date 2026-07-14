@@ -50,6 +50,7 @@ model Bill {
   dueDate    DateTime
   kwh        Float?
   status     String   @default("pendiente")
+  fileUrl    String?
   createdAt  DateTime @default(now())
 }
 
