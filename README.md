@@ -1,4 +1,4 @@
-# WattIA - Hackathon Proyecto
+# Psister - Hackathon Proyecto
 
 WattIA es una aplicación web full-stack de monitoreo de consumo eléctrico residencial.
 
